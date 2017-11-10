@@ -185,3 +185,43 @@ class Discriminator(Chain):
         h = F.flatten(h)
 
         return h
+
+class LimGenerator(Chain):
+    def __init__(self, depth, dim=512):
+        self.dim = dim
+        super(LimGenerator, self).__init__(
+            b0 = GFirstBlock(dim, dim),
+            b1 = GBlock(dim, 512, (8, 8)),
+            b2 = GBlock(512, 256, (16, 16)),
+            b3 = GBlock(256, 128, (32, 32)),
+            b4 = GBlock(128, 64, (64, 64)),
+            b5 = GBlock(64, 32, (128, 128)),
+            b6 = GBlock(32, 16, (256, 256)),
+        )
+
+        self.depth = depth
+
+    def z(self, sz):
+        z = self.xp.random.randn(sz, self.dim, 1, 1).astype('f')
+        return z
+
+    def __call__(self, x, alpha=1.0):
+        if self.depth > 0 and alpha < 1.0:
+            h = x
+            for i in range(self.depth-1):
+                h = self['b%d'%i](h)
+
+            h1 = self['b%d'%(self.depth-1)](h)
+            h2 = F.unpooling_2d(h1, 2, 2, outsize=self['b%d'%self.depth].outsize)
+            h3 = self['b%d'%(self.depth-1)].toRGB(h2)
+            h4 = self['b%d'%self.depth](h1, True)
+            
+            h = h3 * (1 - alpha) + h4 * alpha
+        else:
+            h = x
+            for i in range(self.depth):
+                h = self['b%d'%i](h)
+
+            h = self['b%d'%self.depth](h, True)
+        
+        return h
